@@ -4,13 +4,13 @@
   "description": "A modular photo/video sorting widget using the File System Access API.",
   "main": "dist/widget.js",
   "type": "module",
-  "scripts": {
-    "build:js": "rollup -c",
-    "build:css": "copy src\\\\styles.css dist\\\\styles.css",
-    "build": "npm run build:js && npm run build:css",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "start": "http-server . -c-1"
-  },
+"scripts": {
+  "build:js": "rollup -c",
+  "build:css": "cp src/styles.css dist/styles.css",
+  "build": "npm run build:js && npm run build:css",
+  "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+  "start": "http-server . -c-1"
+},
   "repository": {
     "type": "git",
     "url": "https://github.com/PeakFunnels/photo-sorter-widget.git"
