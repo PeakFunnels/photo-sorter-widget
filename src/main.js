@@ -1,13 +1,12 @@
 // src/main.js
 
-import { openHandleDB, saveLastHandle, getLastHandle } from './storage.js';
+import { getLastHandle, saveLastHandle } from './storage.js';
 import { walkRoot, walkRecursive } from './dir-walk.js';
-import { initObserver, applyFilters, resetGrid, loadMore, generateThumb } from './grid-renderer.js';
+import { initObserver, resetGrid, loadMore, generateThumb } from './grid-renderer.js';
 import { loadAlbums, renderAlbums } from './sidebar.js';
 import { showMetadata } from './metadata.js';
-import { IMAGE_EXTS, VIDEO_EXTS } from './utils.js';
 
-// DOM references
+// DOM refs
 const pickBtn     = document.getElementById('pickBtn');
 const refreshBtn  = document.getElementById('refreshBtn');
 const searchInput = document.getElementById('searchInput');
@@ -22,10 +21,9 @@ const breadcrumb  = document.getElementById('breadcrumb');
 const metaModal   = document.getElementById('metaModal');
 const metaClose   = metaModal.querySelector('.close');
 
-let rootDir, currentHandle;
-let allFiles = [];
+let rootDir, currentHandle, allFiles = [], selected = new Set();
 
-// 1) Initialize the lazy-load observer
+// 1) Lazy-load observer
 initObserver(thumbGrid, generateThumb);
 
 // 2) Infinite scroll
@@ -35,13 +33,13 @@ thumbGrid.addEventListener('scroll', () => {
   }
 });
 
-// 3) Navigation highlight
+// 3) Active nav highlight
 function setActiveNav(el) {
   document.querySelectorAll('.nav-item, .group').forEach(x => x.classList.remove('active'));
   el.classList.add('active');
 }
 
-// 4) Breadcrumb update
+// 4) Breadcrumb
 function updateBreadcrumb(cat, grp) {
   breadcrumb.textContent = !cat
     ? 'Home'
@@ -50,7 +48,7 @@ function updateBreadcrumb(cat, grp) {
       : `Home / ${cat} / ${grp}`;
 }
 
-// 5) Load & render files
+// 5) Load files
 async function loadRootFiles() {
   allFiles = includeSub.checked
     ? await walkRecursive(currentHandle)
@@ -63,100 +61,92 @@ async function loadRootFiles() {
     mediaFilter.value,
     sortSelect.value
   );
-
   updateBreadcrumb();
   refreshBtn.disabled = false;
 }
 
-// 6) Sidebar initializer
+// 6) Sidebar init
 async function initSidebar() {
   const albums = await loadAlbums(rootDir);
   renderAlbums(tree, albums,
-    // onGroupClick
-    async (albumHandle, groupName, navEl) => {
-      setActiveNav(navEl);
+    // onGroupClick with reliable clickedElement
+    async (albumHandle, groupName, clickedEl) => {
+      setActiveNav(clickedEl);
       currentHandle = await albumHandle.getDirectoryHandle(groupName);
       updateBreadcrumb(albumHandle.name, groupName);
       await loadRootFiles();
     },
-    // onGroupDrop
-    async (eOrSignal, albumHandle, groupName) => {
-      if (eOrSignal === 'reload') {
-        await initSidebar();
-        return;
+    // onGroupDrop reading text/plain
+    async (eventOrSignal, albumHandle, groupName) => {
+      if (eventOrSignal === 'reload') {
+        return await initSidebar();
       }
-      const names = JSON.parse(eOrSignal.dataTransfer.getData('application/json'));
+      const raw = eventOrSignal.dataTransfer.getData('text/plain');
+      if (!raw) return;
+      const names = JSON.parse(raw);
       let moved = 0, failed = 0;
-      for (let nm of names) {
+      for (const nm of names) {
         try {
-          const entry = allFiles.find(x => x.name === nm);
-          const blob = await entry.handle.getFile();
-          const targetDir = await albumHandle.getDirectoryHandle(groupName, { create: true });
-          const dest = await targetDir.getFileHandle(nm, { create: true });
-          const w = await dest.createWritable(); await w.write(blob); await w.close();
+          const ent = allFiles.find(f => f.name === nm);
+          const blob = await ent.handle.getFile();
+          const tgt = await albumHandle.getDirectoryHandle(groupName, { create: true });
+          const fileH = await tgt.getFileHandle(nm, { create: true });
+          const w = await fileH.createWritable();
+          await w.write(blob); await w.close();
           await currentHandle.removeEntry(nm);
           moved++;
         } catch {
           failed++;
         }
       }
-      alert(`Moved ${moved} file${moved!==1?'s':''}${failed?`, ${failed} failed`:''}.`);
+      alert(`Moved ${moved} file${moved !== 1 ? 's' : ''}${failed ? `, ${failed} failed` : ''}.`);
       await loadRootFiles();
     }
   );
 }
 
 // 7) Pick folder
-pickBtn.addEventListener('click', async () => {
+pickBtn.onclick = async () => {
   rootDir = await window.showDirectoryPicker();
   await saveLastHandle(rootDir);
   currentHandle = rootDir;
   await loadRootFiles();
   await initSidebar();
   setActiveNav(navRoot);
-});
+};
 
 // 8) Add album
-addAlbum.addEventListener('click', async () => {
-  const name = prompt('New Album:');
-  if (!name) return;
-  await rootDir.getDirectoryHandle(name, { create: true });
+addAlbum.onclick = async () => {
+  const nm = prompt('New Album:');
+  if (!nm) return;
+  await rootDir.getDirectoryHandle(nm, { create: true });
   await initSidebar();
-});
+};
 
-// 9) Filters & controls
-refreshBtn.addEventListener('click', loadRootFiles);
-searchInput.addEventListener('input', loadRootFiles);
-mediaFilter.addEventListener('change', loadRootFiles);
-sortSelect.addEventListener('change', loadRootFiles);
-includeSub.addEventListener('change', () => {
-  loadRootFiles();
-});
+// 9) Filters
+refreshBtn.onclick = loadRootFiles;
+searchInput.oninput   = loadRootFiles;
+mediaFilter.onchange  = loadRootFiles;
+sortSelect.onchange   = loadRootFiles;
+includeSub.onchange   = loadRootFiles;
 
-// 10) Delegate metadata button clicks
+// 10) Metadata delegate
 thumbGrid.addEventListener('click', e => {
   if (e.target.matches('.thumb .actions button[title="Metadata"]')) {
-    // Find corresponding file entry
     const cell = e.target.closest('.thumb');
     const entry = allFiles.find(f => f.name === cell._filename);
     showMetadata(entry, metaModal);
   }
 });
 
-// 11) Close metadata modal
-metaClose.addEventListener('click', () => {
-  metaModal.style.display = 'none';
-});
+// 11) Close modal
+metaClose.onclick = () => metaModal.style.display = 'none';
 
-// 12) Initialization on load
+// 12) On load
 window.addEventListener('load', async () => {
   const last = await getLastHandle();
-  if (last) {
-    rootDir = last;
-  } else {
-    rootDir = await window.showDirectoryPicker({ startIn: 'downloads' });
-    await saveLastHandle(rootDir);
-  }
+  rootDir = last || await window.showDirectoryPicker({ startIn: 'downloads' });
+  if (!last) await saveLastHandle(rootDir);
   currentHandle = rootDir;
 
   await loadRootFiles();

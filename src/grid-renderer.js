@@ -7,9 +7,7 @@ let loaded = 0;
 let displayed = [];
 
 /**
- * Initialize the IntersectionObserver on the thumbnail grid for lazy-loading.
- * @param {HTMLElement} gridEl
- * @param {Function} generateThumbFn
+ * Initialize the IntersectionObserver on the thumbnail grid.
  */
 export function initObserver(gridEl, generateThumbFn) {
   observer = new IntersectionObserver(entries => {
@@ -24,19 +22,12 @@ export function initObserver(gridEl, generateThumbFn) {
 }
 
 /**
- * Filter and sort the full file list.
- * @param {Array} allFiles
- * @param {string} searchQuery
- * @param {string} mediaFilterValue
- * @param {string} sortValue
- * @returns {Array}
+ * Filter and sort your file list.
  */
 export function applyFilters(allFiles, searchQuery, mediaFilterValue, sortValue) {
   let list = [...allFiles];
   const q = searchQuery.trim().toLowerCase();
-  if (q) {
-    list = list.filter(f => f.name.toLowerCase().includes(q));
-  }
+  if (q) list = list.filter(f => f.name.toLowerCase().includes(q));
   if (mediaFilterValue !== 'all') {
     list = list.filter(f => {
       const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
@@ -54,12 +45,7 @@ export function applyFilters(allFiles, searchQuery, mediaFilterValue, sortValue)
 }
 
 /**
- * Clear and reset the thumbnail grid.
- * @param {HTMLElement} container
- * @param {Array} allFiles
- * @param {string} searchQuery
- * @param {string} mediaFilterValue
- * @param {string} sortValue
+ * Clear and reset the grid.
  */
 export function resetGrid(container, allFiles, searchQuery, mediaFilterValue, sortValue) {
   container.innerHTML = '';
@@ -69,8 +55,7 @@ export function resetGrid(container, allFiles, searchQuery, mediaFilterValue, so
 }
 
 /**
- * Load next batch of thumbnails with action buttons, selection, and drag.
- * @param {HTMLElement} container
+ * Load the next batch of thumbnails, with actions, selection, and drag.
  */
 export async function loadMore(container) {
   const slice = displayed.slice(loaded, loaded + BATCH_SIZE);
@@ -82,8 +67,7 @@ export async function loadMore(container) {
 
     // Placeholder icon
     const ph = document.createElement('div');
-    ph.className = 'icon';
-    ph.textContent = '…';
+    ph.className = 'icon'; ph.textContent = '…';
     cell.appendChild(ph);
 
     // Actions container
@@ -94,8 +78,7 @@ export async function loadMore(container) {
 
     // Rename
     const renameBtn = document.createElement('button');
-    renameBtn.textContent = '✎';
-    renameBtn.title = 'Rename';
+    renameBtn.textContent = '✎'; renameBtn.title = 'Rename';
     renameBtn.onclick = async e => {
       e.stopPropagation();
       const base = prompt('Rename to:', f.name.replace(ext, ''));
@@ -103,9 +86,8 @@ export async function loadMore(container) {
       const nm = base.endsWith(ext) ? base : base + ext;
       const file = await f.handle.getFile();
       const nh = await currentHandle.getFileHandle(nm, { create: true });
-      const w = await nh.createWritable();
-      await w.write(file);
-      await w.close();
+      const w  = await nh.createWritable();
+      await w.write(file); await w.close();
       await currentHandle.removeEntry(f.name);
       await loadRootFiles();
     };
@@ -113,8 +95,7 @@ export async function loadMore(container) {
 
     // Delete
     const delBtn = document.createElement('button');
-    delBtn.textContent = '🗑';
-    delBtn.title = 'Delete';
+    delBtn.textContent = '🗑'; delBtn.title = 'Delete';
     delBtn.onclick = async e => {
       e.stopPropagation();
       if (!confirm(`Delete ${f.name}?`)) return;
@@ -125,8 +106,7 @@ export async function loadMore(container) {
 
     // Metadata
     const infoBtn = document.createElement('button');
-    infoBtn.textContent = 'ℹ️';
-    infoBtn.title = 'Metadata';
+    infoBtn.textContent = 'ℹ️'; infoBtn.title = 'Metadata';
     acts.appendChild(infoBtn);
 
     // Open
@@ -143,10 +123,9 @@ export async function loadMore(container) {
 
     cell.appendChild(acts);
 
-    // Filename label
+    // Label
     const lbl = document.createElement('div');
-    lbl.className = 'name';
-    lbl.textContent = f.name;
+    lbl.className = 'name'; lbl.textContent = f.name;
     cell.appendChild(lbl);
 
     // Selection
@@ -168,13 +147,14 @@ export async function loadMore(container) {
       }
     };
 
-    // Drag
+    // Drag start uses text/plain
     cell.draggable = true;
     cell.ondragstart = e => {
       const names = selected.has(f)
         ? Array.from(selected).map(x => x.name)
         : [f.name];
-      e.dataTransfer.setData('application/json', JSON.stringify(names));
+      const payload = JSON.stringify(names);
+      e.dataTransfer.setData('text/plain', payload);
     };
 
     container.appendChild(cell);
@@ -184,52 +164,38 @@ export async function loadMore(container) {
 }
 
 /**
- * Generate a thumbnail image or fallback icon in the cell.
- * @param {FileSystemFileHandle} handle
- * @param {HTMLElement} cell
+ * Generate an actual thumbnail image or fallback icon.
  */
 export async function generateThumb(handle, cell) {
   const file = await handle.getFile();
   const size = parseInt(getComputedStyle(cell).getPropertyValue('--thumb'));
-  const url = URL.createObjectURL(file);
+  const url  = URL.createObjectURL(file);
   const probe = document.createElement('video');
   const canPlay = probe.canPlayType(file.type) !== '';
 
   if (file.type.startsWith('video/') && canPlay) {
-    probe.preload = 'metadata';
-    probe.muted = true;
-    probe.src = url;
-    probe.currentTime = 0.5;
+    probe.preload = 'metadata'; probe.muted = true; probe.src = url; probe.currentTime = 0.5;
     probe.onseeked = async () => {
       const bm = await createImageBitmap(probe, { resizeWidth: size, resizeHeight: size, resizeQuality: 'high' });
-      const cnv = document.createElement('canvas');
-      cnv.width = cnv.height = size;
+      const cnv = document.createElement('canvas'); cnv.width = cnv.height = size;
       cnv.getContext('2d').drawImage(bm, 0, 0);
-      const img = document.createElement('img');
-      img.src = cnv.toDataURL('image/jpeg', 0.75);
+      const img = document.createElement('img'); img.src = cnv.toDataURL('image/jpeg', 0.75);
       cell.replaceChild(img, cell.querySelector('.icon'));
     };
   } else if (file.type.startsWith('image/')) {
-    const img = new Image();
-    img.src = url;
+    const img = new Image(); img.src = url;
     img.onload = async () => {
       const bm = await createImageBitmap(img, { resizeWidth: size, resizeHeight: size, resizeQuality: 'high' });
-      const cnv = document.createElement('canvas');
-      cnv.width = cnv.height = size;
+      const cnv = document.createElement('canvas'); cnv.width = cnv.height = size;
       cnv.getContext('2d').drawImage(bm, 0, 0);
-      const thumb = document.createElement('img');
-      thumb.src = cnv.toDataURL('image/jpeg', 0.75);
+      const thumb = document.createElement('img'); thumb.src = cnv.toDataURL('image/jpeg', 0.75);
       cell.replaceChild(thumb, cell.querySelector('.icon'));
     };
   } else if (file.type.startsWith('video/')) {
-    const icon = document.createElement('div');
-    icon.className = 'icon';
-    icon.textContent = '🎥';
+    const icon = document.createElement('div'); icon.className = 'icon'; icon.textContent = '🎥';
     cell.replaceChild(icon, cell.querySelector('.icon'));
   } else {
-    const icon = document.createElement('div');
-    icon.className = 'icon';
-    icon.textContent = '📄';
+    const icon = document.createElement('div'); icon.className = 'icon'; icon.textContent = '📄';
     cell.replaceChild(icon, cell.querySelector('.icon'));
   }
 }

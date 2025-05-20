@@ -1,20 +1,15 @@
 // src/sidebar.js
 
 /**
- * Scan the root directory for “Albums” (directories) and their sub-“Groups”.
- * @param {FileSystemDirectoryHandle} rootDir
- * @returns {Promise<Array<{ name: string, handle: FileSystemDirectoryHandle, groups: string[] }>>}
+ * Scan the root directory for albums and their sub-groups.
  */
 export async function loadAlbums(rootDir) {
   const albums = [];
   for await (let [name, handle] of rootDir) {
     if (handle.kind === 'directory') {
-      // For each album, collect its group names (subdirectories only)
       const groups = [];
       for await (let [gName, gHandle] of handle) {
-        if (gHandle.kind === 'directory') {
-          groups.push(gName);
-        }
+        if (gHandle.kind === 'directory') groups.push(gName);
       }
       albums.push({ name, handle, groups });
     }
@@ -23,64 +18,50 @@ export async function loadAlbums(rootDir) {
 }
 
 /**
- * Render the albums/categories and their groups into the sidebar container.
- * @param {HTMLElement} treeContainer  The <div id="tree"> element.
- * @param {Array} albumsData           The array returned from loadAlbums().
- * @param {Function} onGroupClick      Callback(groupName, albumHandle, groupName) for navigation clicks.
- * @param {Function} onGroupDrop       Callback(event, albumHandle, groupName) for dropped files.
+ * Render albums & groups into the sidebar.
+ * onGroupClick(albumHandle, groupName, clickedElement)
+ * onGroupDrop(event, albumHandle, groupName)
  */
-export function renderAlbums(treeContainer, albumsData, onGroupClick, onGroupDrop) {
-  treeContainer.innerHTML = '';
-  albumsData.forEach(album => {
-    // Category wrapper
-    const categoryDiv = document.createElement('div');
-    categoryDiv.className = 'category';
+export function renderAlbums(container, albums, onGroupClick, onGroupDrop) {
+  container.innerHTML = '';
+  albums.forEach(album => {
+    const cat = document.createElement('div');
+    cat.className = 'category';
 
-    // Header with album name + “+” button
-    const header = document.createElement('div');
-    header.className = 'cat-header';
-    header.textContent = album.name;
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '➕';
-    addBtn.addEventListener('click', async () => {
-      const newGroup = prompt('New Group:');
-      if (!newGroup) return;
-      await album.handle.getDirectoryHandle(newGroup, { create: true });
-      onGroupDrop('reload');  // signal to reload albums
-    });
-    header.appendChild(addBtn);
-    categoryDiv.appendChild(header);
+    const hdr = document.createElement('div');
+    hdr.className = 'cat-header';
+    hdr.textContent = album.name;
+    const add = document.createElement('button');
+    add.textContent = '➕';
+    add.onclick = async () => {
+      const nm = prompt('New Group:');
+      if (!nm) return;
+      await album.handle.getDirectoryHandle(nm, { create: true });
+      onGroupDrop('reload');
+    };
+    hdr.appendChild(add);
+    cat.appendChild(hdr);
 
-    // Each group listing
-    album.groups.forEach(groupName => {
-      const grpDiv = document.createElement('div');
-      grpDiv.className = 'group';
-      grpDiv.textContent = groupName;
+    album.groups.forEach(grpName => {
+      const grp = document.createElement('div');
+      grp.className = 'group';
+      grp.textContent = grpName;
 
-      // Navigation click
-      grpDiv.addEventListener('click', () => {
-        onGroupClick(album.handle, groupName);
+      // when clicked, pass itself as clickedElement
+      grp.onclick = () => onGroupClick(album.handle, grpName, grp);
+
+      grp.addEventListener('dragover', e => {
+        e.preventDefault(); grp.classList.add('dragover');
+      });
+      grp.addEventListener('dragleave', () => grp.classList.remove('dragover'));
+      grp.addEventListener('drop', e => {
+        e.preventDefault(); grp.classList.remove('dragover');
+        onGroupDrop(e, album.handle, grpName);
       });
 
-      // Drag-over styling
-      grpDiv.addEventListener('dragover', e => {
-        e.preventDefault();
-        grpDiv.classList.add('dragover');
-      });
-      grpDiv.addEventListener('dragleave', () => {
-        grpDiv.classList.remove('dragover');
-      });
-
-      // Drop handling: move selected files into this group
-      grpDiv.addEventListener('drop', e => {
-        e.preventDefault();
-        grpDiv.classList.remove('dragover');
-        onGroupDrop(e, album.handle, groupName);
-      });
-
-      categoryDiv.appendChild(grpDiv);
+      cat.appendChild(grp);
     });
 
-    treeContainer.appendChild(categoryDiv);
+    container.appendChild(cat);
   });
 }
